@@ -2,6 +2,7 @@ import streamlit as st
 import openai
 from datetime import datetime
 import json
+import time
 
 st.set_page_config(
     page_title="AIチャットボット",
@@ -62,6 +63,26 @@ max_tokens = st.sidebar.slider(
     help="回答の最大長を設定します"
 )
 
+# ストリーミング出力の設定
+st.sidebar.markdown("### 📡 ストリーミング設定")
+stream_enabled = st.sidebar.checkbox(
+    "ストリーミング出力", 
+    value=True, 
+    help="リアルタイムでAI応答を表示します"
+)
+
+if stream_enabled:
+    stream_speed = st.sidebar.slider(
+        "表示速度",
+        min_value=0.001,
+        max_value=0.05,
+        value=0.01,
+        step=0.001,
+        help="ストリーミング表示の速度を調整します"
+    )
+else:
+    stream_speed = 0.01
+
 # チャット履歴クリアボタン
 if st.sidebar.button("🗑️ チャット履歴をクリア"):
     st.session_state.chat_history = []
@@ -83,6 +104,7 @@ if not api_key:
     - データ分析のアドバイス
     - ビジネス戦略の提案
     - 学習支援
+    - リアルタイムストリーミング出力
     """)
 else:
     # チャット履歴の表示
@@ -109,13 +131,12 @@ else:
         
         # AI応答を生成
         with st.chat_message("assistant"):
-            with st.spinner("🤖 AIが考え中..."):
-                try:
-                    # OpenAIクライアントの設定
-                    client = openai.OpenAI(api_key=api_key)
-                    
-                    # システムプロンプトの設定
-                    system_prompt = """あなたは親切で知識豊富なAIアシスタントです。
+            try:
+                # OpenAIクライアントの設定
+                client = openai.OpenAI(api_key=api_key)
+                
+                # システムプロンプトの設定
+                system_prompt = """あなたは親切で知識豊富なAIアシスタントです。
 以下の点に注意して回答してください：
 
 1. 日本語で丁寧に回答する
@@ -127,48 +148,84 @@ else:
 7. 不明な点があれば質問して明確にする
 
 常に建設的で役立つ回答を心がけてください。"""
-                    
-                    # メッセージ履歴の準備
-                    messages = [{"role": "system", "content": system_prompt}]
-                    
-                    # 過去の会話履歴を追加（最新の10件まで）
-                    recent_history = st.session_state.chat_history[-10:]
-                    for msg in recent_history:
-                        messages.append({
-                            "role": msg["role"],
-                            "content": msg["content"]
-                        })
-                    
-                    # OpenAI APIを呼び出し
-                    response = client.chat.completions.create(
-                        model=model,
-                        messages=messages,
-                        temperature=temperature,
-                        max_tokens=max_tokens
-                    )
-                    
-                    # AI応答を取得
-                    ai_response = response.choices[0].message.content
-                    
-                    # AI応答を履歴に追加
-                    ai_message = {
-                        "role": "assistant",
-                        "content": ai_response,
-                        "timestamp": datetime.now().isoformat()
-                    }
-                    st.session_state.chat_history.append(ai_message)
-                    
-                    # AI応答を表示
-                    st.markdown(ai_response)
-                    
-                except openai.AuthenticationError:
-                    st.error("❌ APIキーが無効です。正しいAPIキーを入力してください。")
-                except openai.RateLimitError:
-                    st.error("❌ APIレート制限に達しました。しばらく待ってから再試行してください。")
-                except openai.APIError as e:
-                    st.error(f"❌ APIエラーが発生しました: {str(e)}")
-                except Exception as e:
-                    st.error(f"❌ 予期しないエラーが発生しました: {str(e)}")
+                
+                # メッセージ履歴の準備
+                messages = [{"role": "system", "content": system_prompt}]
+                
+                # 過去の会話履歴を追加（最新の10件まで）
+                recent_history = st.session_state.chat_history[-10:]
+                for msg in recent_history:
+                    messages.append({
+                        "role": msg["role"],
+                        "content": msg["content"]
+                    })
+                
+                if stream_enabled:
+                    # ストリーミング出力
+                    with st.spinner("🤖 AIがストリーミング中..."):
+                        message_placeholder = st.empty()
+                        full_response = ""
+                        
+                        # ストリーミングAPIを呼び出し
+                        stream = client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens,
+                            stream=True
+                        )
+                        
+                        # ストリーミング応答を処理
+                        for chunk in stream:
+                            if chunk.choices[0].delta.content is not None:
+                                full_response += chunk.choices[0].delta.content
+                                # リアルタイムで表示を更新（カーソル付き）
+                                message_placeholder.markdown(full_response + "▌")
+                                # 設定された速度で待機してスムーズな表示を実現
+                                time.sleep(stream_speed)
+                        
+                        # 最終的な応答を表示（カーソルを削除）
+                        message_placeholder.markdown(full_response)
+                        
+                        # AI応答を履歴に追加
+                        ai_message = {
+                            "role": "assistant",
+                            "content": full_response,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        st.session_state.chat_history.append(ai_message)
+                else:
+                    # 通常の出力
+                    with st.spinner("🤖 AIが考え中..."):
+                        response = client.chat.completions.create(
+                            model=model,
+                            messages=messages,
+                            temperature=temperature,
+                            max_tokens=max_tokens
+                        )
+                        
+                        # AI応答を取得
+                        ai_response = response.choices[0].message.content
+                        
+                        # AI応答を履歴に追加
+                        ai_message = {
+                            "role": "assistant",
+                            "content": ai_response,
+                            "timestamp": datetime.now().isoformat()
+                        }
+                        st.session_state.chat_history.append(ai_message)
+                        
+                        # AI応答を表示
+                        st.markdown(ai_response)
+                        
+            except openai.AuthenticationError:
+                st.error("❌ APIキーが無効です。正しいAPIキーを入力してください。")
+            except openai.RateLimitError:
+                st.error("❌ APIレート制限に達しました。しばらく待ってから再試行してください。")
+            except openai.APIError as e:
+                st.error(f"❌ APIエラーが発生しました: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ 予期しないエラーが発生しました: {str(e)}")
     
     # チャット履歴の統計情報
     if st.session_state.chat_history:
@@ -215,6 +272,6 @@ st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.8em;'>
     <p>🤖 AIチャットボット - 質問や疑問を気軽に相談してください</p>
-    <p>Powered by OpenAI GPT Models | Streamlit 1.46.1</p>
+    <p>Powered by OpenAI GPT Models | Streamlit 1.46.1 | ストリーミング対応</p>
 </div>
 """, unsafe_allow_html=True) 
