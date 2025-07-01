@@ -444,6 +444,19 @@ elif st.session_state.current_page == "AI アシスタント":
     st.markdown("### 💬 データ分析アシスタント")
     st.markdown("データに関する質問をしてください。AIが分析結果を説明します。")
     
+    # 新しいAIチャットボットページへの案内
+    st.info("""
+    🆕 **新しいAIチャットボット機能が利用可能です！**
+    
+    より高度なAI対話機能をお試しください：
+    - リアルタイムのAI応答
+    - カスタマイズ可能な設定
+    - 詳細なチャット履歴
+    - 多様な質問への対応
+    
+    → **AIチャットボット**ページをご利用ください
+    """)
+    
     # チャット履歴の初期化
     if "messages" not in st.session_state:
         st.session_state.messages = []
