@@ -63,6 +63,26 @@ max_tokens = st.sidebar.slider(
     help="回答の最大長を設定します"
 )
 
+# 文字数制限設定
+st.sidebar.markdown("### 📝 文字数制限設定")
+char_limit_enabled = st.sidebar.checkbox(
+    "文字数制限を有効にする", 
+    value=True, 
+    help="入力と出力を指定文字数以内に制限します"
+)
+
+if char_limit_enabled:
+    char_limit = st.sidebar.slider(
+        "最大文字数",
+        min_value=10,
+        max_value=100,
+        value=30,
+        step=5,
+        help="入力と出力の最大文字数を設定します"
+    )
+else:
+    char_limit = 1000
+
 # ストリーミング出力の設定
 st.sidebar.markdown("### 📡 ストリーミング設定")
 stream_enabled = st.sidebar.checkbox(
@@ -113,21 +133,33 @@ else:
     # チャット履歴を表示
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+            # 文字数制限が有効な場合は表示内容を制限
+            display_content = message["content"]
+            if char_limit_enabled and len(display_content) > char_limit:
+                display_content = display_content[:char_limit] + "..."
+            st.markdown(display_content)
     
     # チャット入力
     if prompt := st.chat_input("メッセージを入力してください..."):
-        # ユーザーメッセージを履歴に追加
-        user_message = {
-            "role": "user",
-            "content": prompt,
-            "timestamp": datetime.now().isoformat()
-        }
-        st.session_state.chat_history.append(user_message)
-        
-        # ユーザーメッセージを表示
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        # 文字数制限のチェック
+        if char_limit_enabled and len(prompt) > char_limit:
+            st.error(f"❌ 入力が長すぎます。{char_limit}文字以内で入力してください。（現在: {len(prompt)}文字）")
+        else:
+            # 文字数制限が有効な場合は、入力内容を制限
+            if char_limit_enabled:
+                prompt = prompt[:char_limit]
+            
+            # ユーザーメッセージを履歴に追加
+            user_message = {
+                "role": "user",
+                "content": prompt,
+                "timestamp": datetime.now().isoformat()
+            }
+            st.session_state.chat_history.append(user_message)
+            
+            # ユーザーメッセージを表示
+            with st.chat_message("user"):
+                st.markdown(prompt)
         
         # AI応答を生成
         with st.chat_message("assistant"):
@@ -136,7 +168,8 @@ else:
                 client = openai.OpenAI(api_key=api_key)
                 
                 # システムプロンプトの設定
-                system_prompt = """あなたは親切で知識豊富なAIアシスタントです。
+                char_limit_instruction = f"回答は必ず{char_limit}文字以内で簡潔にまとめてください。" if char_limit_enabled else ""
+                system_prompt = f"""あなたは親切で知識豊富なAIアシスタントです。
 以下の点に注意して回答してください：
 
 1. 日本語で丁寧に回答する
@@ -146,6 +179,7 @@ else:
 5. ビジネス関連の質問には戦略的な視点で回答する
 6. 学習支援では段階的な説明を心がける
 7. 不明な点があれば質問して明確にする
+8. {char_limit_instruction}
 
 常に建設的で役立つ回答を心がけてください。"""
                 
@@ -184,6 +218,10 @@ else:
                                 # 設定された速度で待機してスムーズな表示を実現
                                 time.sleep(stream_speed)
                         
+                        # 文字数制限を適用
+                        if char_limit_enabled and len(full_response) > char_limit:
+                            full_response = full_response[:char_limit] + "..."
+                        
                         # 最終的な応答を表示（カーソルを削除）
                         message_placeholder.markdown(full_response)
                         
@@ -206,6 +244,10 @@ else:
                         
                         # AI応答を取得
                         ai_response = response.choices[0].message.content
+                        
+                        # 文字数制限を適用
+                        if char_limit_enabled and len(ai_response) > char_limit:
+                            ai_response = ai_response[:char_limit] + "..."
                         
                         # AI応答を履歴に追加
                         ai_message = {
@@ -249,11 +291,11 @@ else:
     st.markdown("### 💡 よくある質問の例")
     
     example_questions = [
-        "Pythonでデータ分析を始めるにはどうすればいいですか？",
-        "Streamlitアプリのパフォーマンスを改善する方法を教えてください",
-        "機械学習モデルの精度を向上させるコツはありますか？",
-        "ビジネスデータの可視化で効果的なグラフの選び方を教えてください",
-        "データベース設計のベストプラクティスを教えてください"
+        "Pythonでデータ分析を始めるには？",
+        "Streamlitアプリの改善方法は？",
+        "機械学習の精度向上のコツは？",
+        "効果的なグラフの選び方は？",
+        "データベース設計のベストプラクティスは？"
     ]
     
     cols = st.columns(len(example_questions))
@@ -271,7 +313,7 @@ else:
 st.markdown("---")
 st.markdown("""
 <div style='text-align: center; color: #666; font-size: 0.8em;'>
-    <p>🤖 AIチャットボット - 質問や疑問を気軽に相談してください</p>
-    <p>Powered by OpenAI GPT Models | Streamlit 1.46.1 | ストリーミング対応</p>
+    <p>🤖 AIチャットボット - 簡潔な質問と回答</p>
+    <p>Powered by OpenAI GPT Models | Streamlit 1.46.1 | 文字数制限対応</p>
 </div>
 """, unsafe_allow_html=True) 
